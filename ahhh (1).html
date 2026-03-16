@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Itiraf Kutusu - Anonim Hikayeler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);
+            min-height: 100vh;
+        }
+        .serif-font { font-family: 'Playfair Display', serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .story-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .story-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        .category-btn.active {
+            background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #f472b6 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+        .loading {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top: 3px solid #ec4899;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+
+    <!-- Header -->
+    <header class="glass-effect sticky top-0 z-50 border-b border-white/10">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full flex items-center justify-center text-2xl">📖</div>
+                <h1 class="text-2xl font-bold serif-font gradient-text">Itiraf Kutusu</h1>
+            </div>
+            <button onclick="openWriteModal()" class="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 px-6 py-2 rounded-full font-semibold transition-all transform hover:scale-105 shadow-lg">
+                + Hikaye Yaz
+            </button>
+        </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="container mx-auto px-4 py-12 text-center">
+        <h2 class="text-4xl md:text-6xl font-bold serif-font mb-4 gradient-text">Kimse Bilmeyecek</h2>
+        <p class="text-gray-400 text-lg max-w-2xl mx-auto">Gerçek zamanlı, herkesin gördüğü anonim hikayeler.</p>
+    </section>
+
+    <!-- Categories -->
+    <section class="container mx-auto px-4 mb-8">
+        <div class="flex flex-wrap justify-center gap-3" id="categoryFilters">
+            <button onclick="filterStories('all')" class="category-btn active px-6 py-3 rounded-full glass-effect hover:bg-white/10 font-medium" data-category="all">Tümü</button>
+            <button onclick="filterStories('firstdate')" class="category-btn px-6 py-3 rounded-full glass-effect hover:bg-white/10 font-medium flex items-center gap-2" data-category="firstdate"><span>💕</span> İlk Buluşma</button>
+            <button onclick="filterStories('horror')" class="category-btn px-6 py-3 rounded-full glass-effect hover:bg-white/10 font-medium flex items-center gap-2" data-category="horror"><span>👻</span> Korku</button>
+            <button onclick="filterStories('embarrassing')" class="category-btn px-6 py-3 rounded-full glass-effect hover:bg-white/10 font-medium flex items-center gap-2" data-category="embarrassing"><span>😅</span> Rezil Olma</button>
+            <button onclick="filterStories('cheating')" class="category-btn px-6 py-3 rounded-full glass-effect hover:bg-white/10 font-medium flex items-center gap-2" data-category="cheating"><span>💔</span> Aldatılma</button>
+            <button onclick="filterStories('lies')" class="category-btn px-6 py-3 rounded-full glass-effect hover:bg-white/10 font-medium flex items-center gap-2" data-category="lies"><span>🤥</span> Büyük Yalanlar</button>
+        </div>
+    </section>
+
+    <!-- Loading -->
+    <div id="loadingState" class="flex justify-center py-20">
+        <div class="loading"></div>
+    </div>
+
+    <!-- Stories -->
+    <section class="container mx-auto px-4 pb-12 hidden" id="contentSection">
+        <div id="storiesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        <div id="emptyState" class="hidden text-center py-20">
+            <div class="text-6xl mb-4">📝</div>
+            <p class="text-gray-400 text-xl">Bu kategoride henüz hikaye yok.<br>İlk sen yaz!</p>
+        </div>
+    </section>
+
+    <!-- Read Modal -->
+    <div id="readModal" class="modal fixed inset-0 bg-black/90 backdrop-blur-sm z-50 items-center justify-center p-4">
+        <div class="glass-effect rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-white/20 relative">
+            <button onclick="closeReadModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white text-3xl z-10">&times;</button>
+            <div class="p-8">
+                <div class="flex items-center gap-3 mb-6">
+                    <span id="readCategory" class="px-4 py-2 rounded-full text-sm font-medium border"></span>
+                    <span id="readDate" class="text-gray-500 text-sm"></span>
+                </div>
+                <h2 id="readTitle" class="text-3xl md:text-4xl font-bold serif-font mb-8 text-white leading-tight"></h2>
+                <div class="prose prose-invert max-w-none">
+                    <p id="readContent" class="text-lg leading-relaxed text-gray-300 whitespace-pre-wrap"></p>
+                </div>
+                <div class="flex items-center justify-between mt-10 pt-6 border-t border-white/10">
+                    <button id="readLikeBtn" onclick="toggleLikeFromModal()" class="flex items-center gap-2 text-gray-400 hover:text-pink-500 transition-colors text-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                        </svg>
+                        <span id="readLikes">0</span> beğeni
+                    </button>
+                    <span class="text-gray-500">@Anonim</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Write Modal -->
+    <div id="writeModal" class="modal fixed inset-0 bg-black/80 backdrop-blur-sm z-50 items-center justify-center p-4">
+        <div class="glass-effect rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
+            <div class="p-6 border-b border-white/10 flex justify-between items-center">
+                <h3 class="text-2xl font-bold serif-font gradient-text">Hikayeni Yaz</h3>
+                <button onclick="closeWriteModal()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <form id="storyForm" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-gray-300">Kategori</label>
+                    <select id="storyCategory" class="w-full bg-slate-800/50 border border-white/20 rounded-lg px-4 py-3 text-white focus:border-pink-500">
+                        <option value="firstdate">💕 İlk Buluşma</option>
+                        <option value="horror">👻 Korku</option>
+                        <option value="embarrassing">😅 Rezil Olma</option>
+                        <option value="cheating">💔 Aldatılma</option>
+                        <option value="lies">🤥 Büyük Yalanlar</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-gray-300">Başlık</label>
+                    <input type="text" id="storyTitle" placeholder="Hikayene bir başlık ver..." class="w-full bg-slate-800/50 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:border-pink-500" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-gray-300">Hikayen</label>
+                    <textarea id="storyContent" rows="8" placeholder="Başından geçenleri anlat..." required class="w-full bg-slate-800/50 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:border-pink-500 resize-none"></textarea>
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3 rounded-lg font-semibold transition-all transform hover:scale-[1.02] shadow-lg">
+                    Hikayeyi Paylaş
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 🔥 FIREBASE AYARLARI - BUNU KENDİNİZ DEĞİŞTİRMELİSİNİZ
+        const firebaseConfig = {
+            apiKey: "BURAYA_API_KEY",
+            authDomain: "BURAYA_AUTH_DOMAIN",
+            projectId: "BURAYA_PROJECT_ID",
+            storageBucket: "BURAYA_STORAGE_BUCKET",
+            messagingSenderId: "BURAYA_MESSAGING_SENDER_ID",
+            appId: "BURAYA_APP_ID"
+        };
+
+        // Firebase başlat
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let stories = [];
+        let currentFilter = 'all';
+        let currentReadingId = null;
+        let likedStories = JSON.parse(localStorage.getItem('likedStories') || '[]');
+
+        const categoryNames = {
+            firstdate: 'İlk Buluşma',
+            horror: 'Korku',
+            embarrassing: 'Rezil Olma',
+            cheating: 'Aldatılma',
+            lies: 'Büyük Yalanlar'
+        };
+
+        const categoryColors = {
+            firstdate: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+            horror: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+            embarrassing: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+            cheating: 'bg-red-500/20 text-red-300 border-red-500/30',
+            lies: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+        };
+
+        // Gerçek zamanlı veri çekme
+        function loadStories() {
+            db.collection('stories')
+                .orderBy('timestamp', 'desc')
+                .onSnapshot((snapshot) => {
+                    stories = [];
+                    snapshot.forEach((doc) => {
+                        stories.push({ id: doc.id, ...doc.data() });
+                    });
+                    document.getElementById('loadingState').classList.add('hidden');
+                    document.getElementById('contentSection').classList.remove('hidden');
+                    renderStories();
+                }, (error) => {
+                    console.error("Hata:", error);
+                    alert("Veritabanına bağlanılamadı. Firebase ayarlarını kontrol et!");
+                });
+        }
+
+        function renderStories() {
+            const container = document.getElementById('storiesContainer');
+            const emptyState = document.getElementById('emptyState');
+            
+            const filtered = currentFilter === 'all' 
+                ? stories 
+                : stories.filter(s => s.category === currentFilter);
+
+            if (filtered.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            emptyState.classList.add('hidden');
+            
+            container.innerHTML = filtered.map((story, index) => {
+                const isLiked = likedStories.includes(story.id);
+                return `
+                <article onclick="openReadModal('${story.id}')" class="story-card glass-effect rounded-xl p-6 relative overflow-hidden" style="animation: fadeIn 0.5s ease-out ${index * 0.1}s both">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="px-3 py-1 rounded-full text-xs font-medium border ${categoryColors[story.category]}">
+                            ${categoryNames[story.category]}
+                        </span>
+                        <span class="text-gray-500 text-sm">${story.date}</span>
+                    </div>
+                    
+                    <h3 class="text-xl font-bold mb-3 serif-font text-white line-clamp-2">${story.title}</h3>
+                    <p class="text-gray-400 leading-relaxed line-clamp-3 mb-4">${story.content}</p>
+                    
+                    <div class="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-slate-900/80 to-transparent flex items-end justify-center pb-4">
+                        <span class="text-pink-400 text-sm font-medium flex items-center gap-1">
+                            Devamını oku 
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between pt-4 mt-2 border-t border-white/10">
+                        <button onclick="event.stopPropagation(); toggleLike('${story.id}')" class="flex items-center gap-2 transition-colors ${isLiked ? 'text-pink-500' : 'text-gray-400 hover:text-pink-500'}">
+                            <svg class="w-5 h-5" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                            </svg>
+                            <span>${story.likes || 0}</span>
+                        </button>
+                        <span class="text-gray-500 text-xs">@${story.author}</span>
+                    </div>
+                </article>
+            `}).join('');
+        }
+
+        function openReadModal(id) {
+            const story = stories.find(s => s.id === id);
+            if (!story) return;
+            
+            currentReadingId = id;
+            const isLiked = likedStories.includes(id);
+            
+            document.getElementById('readCategory').textContent = categoryNames[story.category];
+            document.getElementById('readCategory').className = `px-4 py-2 rounded-full text-sm font-medium border ${categoryColors[story.category]}`;
+            document.getElementById('readDate').textContent = story.date;
+            document.getElementById('readTitle').textContent = story.title;
+            document.getElementById('readContent').textContent = story.content;
+            document.getElementById('readLikes').textContent = story.likes || 0;
+            
+            const likeBtn = document.getElementById('readLikeBtn');
+            likeBtn.className = `flex items-center gap-2 transition-colors text-lg ${isLiked ? 'text-pink-500' : 'text-gray-400 hover:text-pink-500'}`;
+            likeBtn.querySelector('svg').setAttribute('fill', isLiked ? 'currentColor' : 'none');
+            
+            document.getElementById('readModal').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeReadModal() {
+            document.getElementById('readModal').classList.remove('active');
+            document.body.style.overflow = 'auto';
+            currentReadingId = null;
+        }
+
+        async function toggleLike(id) {
+            if (likedStories.includes(id)) {
+                likedStories = likedStories.filter(lid => lid !== id);
+                await db.collection('stories').doc(id).update({
+                    likes: firebase.firestore.FieldValue.increment(-1)
+                });
+            } else {
+                likedStories.push(id);
+                await db.collection('stories').doc(id).update({
+                    likes: firebase.firestore.FieldValue.increment(1)
+                });
+            }
+            localStorage.setItem('likedStories', JSON.stringify(likedStories));
+            renderStories();
+        }
+
+        function toggleLikeFromModal() {
+            if (currentReadingId) {
+                toggleLike(currentReadingId);
+                const story = stories.find(s => s.id === currentReadingId);
+                document.getElementById('readLikes').textContent = (story.likes || 0) + (likedStories.includes(currentReadingId) ? 1 : 0);
+                const likeBtn = document.getElementById('readLikeBtn');
+                const isLiked = likedStories.includes(currentReadingId);
+                likeBtn.className = `flex items-center gap-2 transition-colors text-lg ${isLiked ? 'text-pink-500' : 'text-gray-400 hover:text-pink-500'}`;
+                likeBtn.querySelector('svg').setAttribute('fill', isLiked ? 'currentColor' : 'none');
+            }
+        }
+
+        function filterStories(category) {
+            currentFilter = category;
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.category === category);
+            });
+            renderStories();
+        }
+
+        function openWriteModal() {
+            document.getElementById('writeModal').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeWriteModal() {
+            document.getElementById('writeModal').classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+
+        document.getElementById('storyForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.textContent = 'Paylaşılıyor...';
+            submitBtn.disabled = true;
+            
+            const newStory = {
+                category: document.getElementById('storyCategory').value,
+                title: document.getElementById('storyTitle').value,
+                content: document.getElementById('storyContent').value,
+                author: 'Anonim',
+                date: new Date().toLocaleDateString('tr-TR'),
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                likes: 0
+            };
+            
+            try {
+                await db.collection('stories').add(newStory);
+                closeWriteModal();
+                this.reset();
+                alert('Hikayeniz paylaşıldı! 🎉');
+            } catch (error) {
+                alert('Hata oluştu: ' + error.message);
+            } finally {
+                submitBtn.textContent = 'Hikayeyi Paylaş';
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Modal kapatma
+        document.getElementById('readModal').addEventListener('click', e => { if(e.target === e.currentTarget) closeReadModal(); });
+        document.getElementById('writeModal').addEventListener('click', e => { if(e.target === e.currentTarget) closeWriteModal(); });
+        document.addEventListener('keydown', e => { if(e.key === 'Escape') { closeReadModal(); closeWriteModal(); }});
+
+        // Başlat
+        loadStories();
+    </script>
+</body>
+</html>const firebaseConfig = {
+  apiKey: "AIzaSyB...",
+  authDomain: "itiraf-kutusu-12345.firebaseapp.com",
+  projectId: "itiraf-kutusu-12345",
+  storageBucket: "itiraf-kutusu-12345.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef123456"
+};rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /stories/{story} {
+      allow read: if true;  // Herkes okuyabilir
+      allow create: if true; // Herkes yazabilir
+      allow update: if true; // Beğeni güncellenebilir
+      allow delete: if false; // Kimse silemez
+    }
+  }
+}
